@@ -46,7 +46,8 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
     private RecyclerView mRecyclerView;
 
     private ViewGroup mRefreshLayout;
-    private TextView mTvStatus;
+    private IRefreshView mRefreshView;
+
 
     private int mParentHeight;
     private int mMaxHeadHeight;
@@ -87,7 +88,7 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
         mRecyclerView = mRootView.findViewById(R.id.recycler_view_content);
 
         mRefreshLayout = mRootView.findViewById(R.id.refresh_layout);
-        mTvStatus = mRootView.findViewById(R.id.status_view);
+        mRefreshView = mRootView.findViewById(R.id.refresh_head);
 
         mMaxHeadHeight = ScreenUtil.dip2px(100);
         mMinHeadHeight = mMaxHeadHeight / 2;
@@ -105,10 +106,6 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
 
     public RecyclerView getRecyclerView() {
         return mRecyclerView;
-    }
-
-    public TextView getmTvStatus() {
-        return mTvStatus;
     }
 
 
@@ -205,14 +202,15 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
                     mStatus = STATUS_PULL;
                     float offset = 0.5f * dyUnconsumed;
                     offset = Math.min(-offset, mMaxPullHeight - y);
-                    mListParent.setTranslationY(offset + y);
-                    mRefreshLayout.setTranslationY(offset + y);
-                    if (offset + y >= mBreakHeight) {
+                    final float translationY = offset + y;
+                    mListParent.setTranslationY(translationY);
+                    mRefreshLayout.setTranslationY(translationY);
+                    if (translationY >= mBreakHeight) {
                         onRefreshViewBreak();
-                    } else if (offset + y >= mRefreshHeight) {
-                        mTvStatus.setText("放开刷新");
+                    } else if (translationY >= mRefreshHeight) {
+                        mRefreshView.setStatus(IRefreshView.STATUS_PRE_REFRESH);
                     } else {
-                        mTvStatus.setText("下拉刷新");
+                        mRefreshView.setStatus(IRefreshView.STATUS_PULL);
                     }
                 }
             }
@@ -236,12 +234,13 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
                     mStatus = STATUS_PULL;
                     float offset = 0.5f * dyUnconsumed;
                     offset = Math.min(-offset, mMaxPullHeight - y);
-                    mListParent.setTranslationY(offset + y);
-                    mRefreshLayout.setTranslationY(offset + y);
-                    if (offset + y >= mRefreshHeight) {
-                        mTvStatus.setText("放开刷新");
+                    final float translationY = offset + y;
+                    mListParent.setTranslationY(translationY);
+                    mRefreshLayout.setTranslationY(translationY);
+                    if (translationY >= mRefreshHeight) {
+                        mRefreshView.setStatus(IRefreshView.STATUS_PRE_REFRESH);
                     } else {
-                        mTvStatus.setText("下拉刷新");
+                        mRefreshView.setStatus(IRefreshView.STATUS_PULL);
                     }
                 }
             } else if (type == ViewCompat.TYPE_NON_TOUCH) {
@@ -287,12 +286,20 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
                 float oldY = mRefreshLayout.getTranslationY();
                 if (oldY > 0) {
                     float offset = Math.min(dy, oldY);
-                    mListParent.setTranslationY(oldY - offset);
-                    mRefreshLayout.setTranslationY(oldY - offset);
+                    float translationY = oldY - offset;
+                    mListParent.setTranslationY(translationY);
+                    mRefreshLayout.setTranslationY(translationY);
                     float newY = mRefreshLayout.getTranslationY();
                     consumed[1] = (int) (oldY - newY);
                     if (newY == 0) {
                         mStatus = STATUS_NULL;
+                    }
+                    if (translationY >= mRefreshHeight) {
+                        mRefreshView.setStatus(IRefreshView.STATUS_PRE_REFRESH);
+                    } else if (translationY > 0) {
+                        mRefreshView.setStatus(IRefreshView.STATUS_PULL);
+                    } else {
+                        mRefreshView.setStatus(IRefreshView.STATUS_NULL);
                     }
                 } else {
                     mStatus = STATUS_NULL;
@@ -356,6 +363,7 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
 
     private void onRefreshing() {
         mStatus = STATUS_REFRESH;
+        mRefreshView.setStatus(IRefreshView.STATUS_REFRESHING);
         ValueAnimator animator1 = ObjectAnimator.ofFloat(mRefreshLayout, "translationY", mRefreshHeight);
         ValueAnimator animator2 = ObjectAnimator.ofFloat(mListParent, "translationY", mRefreshHeight);
         AnimatorSet animatorSet = new AnimatorSet();
@@ -378,6 +386,7 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
 
     private void onResetRefresh() {
         mStatus = STATUS_RESET;
+        mRefreshView.setStatus(IRefreshView.STATUS_RESET);
         ValueAnimator animator1 = ObjectAnimator.ofFloat(mRefreshLayout, "translationY", 0);
         ValueAnimator animator2 = ObjectAnimator.ofFloat(mListParent, "translationY", 0);
         AnimatorSet animatorSet = new AnimatorSet();
@@ -386,6 +395,7 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
             public void onAnimationEnd(Animator animation) {
                 super.onAnimationEnd(animation);
                 mStatus = STATUS_NULL;
+                mRefreshView.setStatus(IRefreshView.STATUS_NULL);
             }
         });
         animatorSet.playTogether(animator1, animator2);
@@ -411,6 +421,18 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
     public void setRefreshListener(OnRefreshListener refreshListener) {
         mRefreshListener = refreshListener;
     }
+
+    public void resetAllView() {
+        if (mStatus == STATUS_NULL) {
+            onResetRefresh();
+
+
+            mListParent.setScrollY(0);
+
+
+        }
+    }
+
 
     public interface OnRefreshListener {
 

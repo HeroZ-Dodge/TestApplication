@@ -31,14 +31,11 @@
         android:layout_alignBottom="@+id/head_view"
         android:background="@color/colorPrimary">
 
-        <TextView
-            android:id="@+id/status_view"
+
+        <com.dodge.testapplication.RefreshHeadView
+            android:id="@+id/refresh_head"
             android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:layout_gravity="bottom"
-            android:background="@color/colorPrimary"
-            android:gravity="center"
-            android:text="status" />
+            android:layout_height="match_parent" />
 
     </FrameLayout>
 
