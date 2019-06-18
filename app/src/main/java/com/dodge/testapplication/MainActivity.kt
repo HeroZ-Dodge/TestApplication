@@ -16,10 +16,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initView() {
-        my_scroll_layout.recyclerView0.layoutManager = LinearLayoutManager(this)
+        val layoutManager = LinearLayoutManager(this)
+        layoutManager.isAutoMeasureEnabled = true
+        my_scroll_layout.recyclerView0.layoutManager = layoutManager
         my_scroll_layout.recyclerView0.adapter = MyAdapter(this, getData(10))
-
-
 
         my_scroll_layout.recyclerView.layoutManager = LinearLayoutManager(this)
         my_scroll_layout.recyclerView.adapter = MyAdapter(this, getData(50))
