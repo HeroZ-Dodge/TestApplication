@@ -23,6 +23,10 @@ class MainActivity : AppCompatActivity() {
 
         my_scroll_layout.recyclerView.layoutManager = LinearLayoutManager(this)
         my_scroll_layout.recyclerView.adapter = MyAdapter(this, getData(50))
+        my_scroll_layout.headLayout.setOnClickListener {
+            my_scroll_layout.resetAllView()
+        }
+
     }
 
     private fun getData(size: Int): List<String> {

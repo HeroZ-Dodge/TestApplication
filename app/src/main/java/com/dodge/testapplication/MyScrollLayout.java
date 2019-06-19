@@ -18,10 +18,8 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
-import android.widget.TextView;
-
-import java.util.Arrays;
 
 /**
  * Created by linzheng on 2019/6/13.
@@ -31,17 +29,21 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
 
     public static final String TAG = "MyScrollLayout";
 
-    public static final int STATUS_NULL = 0;
+    public static final int STATUS_DEFAULT = 0;
     public static final int STATUS_PULL = 1;
     public static final int STATUS_RESET = 2;
     public static final int STATUS_REFRESH = 3;
     public static final int STATUS_BREAK = 4;
 
-    private int mStatus = STATUS_NULL;
+    private int mStatus = STATUS_DEFAULT;
+    private boolean mHeadRvClosed = false;
+
 
     private View mRootView;
-    private ViewGroup mListParent;
+    private ViewGroup mHeadLayout;
     private View mHeadView;
+
+    private ViewGroup mListParent;
     private RecyclerView mHeadRv;
     private RecyclerView mRecyclerView;
 
@@ -49,14 +51,13 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
     private IRefreshView mRefreshView;
 
 
-    private int mParentHeight;
-    private int mMaxHeadHeight;
-    private int mMinHeadHeight;
+    private int mParentHeight;   // 父控件 高度
+    private int mMaxHeadHeight;  // 头部控件最大高度
+    private int mMinHeadHeight;  // 头部控件最小高度
 
-    private int mMaxPullHeight;
-    private int mRefreshHeight;
-    private int mBreakHeight;
-
+    private int mMaxPullHeight;  // 最大下拉高度
+    private int mRefreshHeight;  // 刷新触发高度
+    private int mRipHeight;      // 撕裂高度
     private OnRefreshListener mRefreshListener;
 
     private final NestedScrollingParentHelper mNsParentHelper = new NestedScrollingParentHelper(this);
@@ -80,10 +81,11 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
 
     private void initView() {
         LayoutInflater inflater = LayoutInflater.from(getContext());
-        mRootView = inflater.inflate(R.layout.my_scroll_layout, this, false);
+        mRootView = inflater.inflate(R.layout.my_scroll_layout, this, true);
         mListParent = mRootView.findViewById(R.id.recycler_layout);
-
+        mHeadLayout = mRootView.findViewById(R.id.head_layout);
         mHeadView = mRootView.findViewById(R.id.head_view);
+
         mHeadRv = mRootView.findViewById(R.id.recycler_view_head);
         mRecyclerView = mRootView.findViewById(R.id.recycler_view_content);
 
@@ -95,9 +97,7 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
 
         mMaxPullHeight = ScreenUtil.dip2px(120);
         mRefreshHeight = ScreenUtil.dip2px(64);
-        mBreakHeight = ScreenUtil.dip2px(96);
-
-        addView(mRootView);
+        mRipHeight = ScreenUtil.dip2px(96);
     }
 
     public RecyclerView getRecyclerView0() {
@@ -108,64 +108,43 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
         return mRecyclerView;
     }
 
+    public ViewGroup getHeadLayout() {
+        return mHeadLayout;
+    }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-
-        Log.d(TAG, "onMeasure: ");
-
         final int heightMode = MeasureSpec.getMode(heightMeasureSpec);
         if (heightMode == MeasureSpec.UNSPECIFIED) {
             return;
         }
-
-        if (mParentHeight == 0) {
-            mParentHeight = getMeasuredHeight();
-        }
-
-        if (mParentHeight > 0) {
-            initHeight();
+        mParentHeight = getMeasuredHeight();
+        if (mParentHeight > 0 && mRecyclerView != null) {
+            mRecyclerView.getLayoutParams().height = mParentHeight - mMinHeadHeight;
             if (getChildCount() > 0) {
                 final View child = getChildAt(0);
-                $measureChildWithMargins(child, widthMeasureSpec, 0, heightMeasureSpec, 0);
+                $measureChildWithMargins(child, widthMeasureSpec);
             }
         }
     }
 
-    protected void $measureChildWithMargins(View child, int parentWidthMeasureSpec, int widthUsed, int parentHeightMeasureSpec, int heightUsed) {
+    private void $measureChildWithMargins(View child, int parentWidthMeasureSpec) {
         final MarginLayoutParams lp = (MarginLayoutParams) child.getLayoutParams();
         final int childWidthMeasureSpec = getChildMeasureSpec(parentWidthMeasureSpec,
-                getPaddingLeft() + getPaddingRight() + lp.leftMargin + lp.rightMargin + widthUsed, lp.width);
+                getPaddingLeft() + getPaddingRight() + lp.leftMargin + lp.rightMargin, lp.width);
         final int childHeightMeasureSpec = MeasureSpec.makeMeasureSpec(lp.topMargin + lp.bottomMargin, MeasureSpec.UNSPECIFIED);
         child.measure(childWidthMeasureSpec, childHeightMeasureSpec);
     }
 
-    public void initHeight() {
-        Log.d(TAG, "initHeight: ");
-        int height = getMeasuredHeight();
-        if (height == 0) {
-            return;
-        }
-        mRecyclerView.getLayoutParams().height = height - mMinHeadHeight;
-    }
-
-    @Override
-    protected void measureChildWithMargins(View child, int parentWidthMeasureSpec, int widthUsed, int parentHeightMeasureSpec, int heightUsed) {
-        super.measureChildWithMargins(child, parentWidthMeasureSpec, widthUsed, parentHeightMeasureSpec, heightUsed);
-        Log.d(TAG, "measureChildWithMargins: ");
-    }
-
     @Override
     public boolean onStartNestedScroll(@NonNull View child, @NonNull View target, @ViewCompat.ScrollAxis int axes, @ViewCompat.ScrollAxis int type) {
-        Log.d(TAG, "onStartNestedScroll: axes = " + axes);
         return axes == ViewCompat.SCROLL_AXIS_VERTICAL;
     }
 
     @Override
     public void onNestedScrollAccepted(@NonNull View child, @NonNull View target, @ViewCompat.ScrollAxis int axes, @ViewCompat.ScrollAxis int type) {
         mNsParentHelper.onNestedScrollAccepted(child, target, axes, type);
-        Log.d(TAG, "onNestedScrollAccepted: axes = " + axes);
     }
 
     @Override
@@ -176,143 +155,184 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
     @Override
     public void onNestedScroll(@NonNull View target, int dxConsumed, int dyConsumed, int dxUnconsumed, int dyUnconsumed, @ViewCompat.NestedScrollType int type) {
         if (dyUnconsumed > 0) {
-            handleScrollUp(dyUnconsumed, null, type);
+            hideTopRecyclerView(dyUnconsumed, null);
         } else if (dyUnconsumed < 0) {
             handleScrollDown(target, dyUnconsumed, type);
         }
-        Log.d(TAG, "onNestedScroll: dyConsumed = " + dyConsumed);
-        Log.d(TAG, "onNestedScroll: dyUnconsumed = " + dyUnconsumed);
     }
-
-
-    private boolean mHeadRvClosed = false;
 
     private void handleScrollDown(View target, int dyUnconsumed, @ViewCompat.NestedScrollType int type) {
         if (mHeadRvClosed) {
-            if (type == ViewCompat.TYPE_NON_TOUCH) {
-                if (target instanceof RecyclerView) {
-                    ((RecyclerView) target).stopScroll();
-                }
-            } else {
-                if (mStatus != STATUS_NULL && mStatus != STATUS_PULL) {
-                    return;
-                }
-                float y = mRefreshLayout.getTranslationY();
-                if (y < mMaxPullHeight) {
-                    mStatus = STATUS_PULL;
-                    float offset = 0.5f * dyUnconsumed;
-                    offset = Math.min(-offset, mMaxPullHeight - y);
-                    final float translationY = offset + y;
-                    mListParent.setTranslationY(translationY);
-                    mRefreshLayout.setTranslationY(translationY);
-                    if (translationY >= mBreakHeight) {
-                        onRefreshViewBreak();
-                    } else if (translationY >= mRefreshHeight) {
-                        mRefreshView.setStatus(IRefreshView.STATUS_PRE_REFRESH);
-                    } else {
-                        mRefreshView.setStatus(IRefreshView.STATUS_PULL);
-                    }
-                }
-            }
+            scrollDownWhenTopHide(target, dyUnconsumed, type);
         } else {
-            int oldY = mListParent.getScrollY();
-            if (oldY > 0) {
-                int offset = Math.max(dyUnconsumed, -oldY);
-                mListParent.scrollBy(0, offset);
-                if (type == ViewCompat.TYPE_NON_TOUCH && mListParent.getScrollY() == 0) {
-                    if (target instanceof RecyclerView) {
-                        ((RecyclerView) target).stopScroll();
-                        Log.d(TAG, "handleScrollDown: stop Scroll-0");
-                    }
-                }
-            } else if (type == ViewCompat.TYPE_TOUCH) {
-                if (mStatus != STATUS_NULL && mStatus != STATUS_PULL) {
-                    return;
-                }
-                float y = mRefreshLayout.getTranslationY();
-                if (y < mMaxPullHeight) {
-                    mStatus = STATUS_PULL;
-                    float offset = 0.5f * dyUnconsumed;
-                    offset = Math.min(-offset, mMaxPullHeight - y);
-                    final float translationY = offset + y;
-                    mListParent.setTranslationY(translationY);
-                    mRefreshLayout.setTranslationY(translationY);
-                    if (translationY >= mRefreshHeight) {
-                        mRefreshView.setStatus(IRefreshView.STATUS_PRE_REFRESH);
-                    } else {
-                        mRefreshView.setStatus(IRefreshView.STATUS_PULL);
-                    }
-                }
-            } else if (type == ViewCompat.TYPE_NON_TOUCH) {
-                if (target instanceof RecyclerView) {
-                    ((RecyclerView) target).stopScroll();
-                    Log.d(TAG, "handleScrollDown: stop Scroll-1");
-                }
-            }
+            scrollDownWhenTopExpand(target, dyUnconsumed, type);
         }
 
     }
 
-    private void onRefreshViewBreak() {
-        if (mStatus == STATUS_PULL) {
-            mStatus = STATUS_BREAK;
-            mHeadRvClosed = false;
-            mListParent.setTranslationY(0);
-            mListParent.scrollBy(0, -mBreakHeight);
-            mRefreshLayout.animate().translationY(0)
-                    .setListener(new AnimatorListenerAdapter() {
-                        @Override
-                        public void onAnimationEnd(Animator animation) {
-                            super.onAnimationEnd(animation);
-                            mStatus = STATUS_NULL;
-                        }
-                    })
-                    .start();
+    /**
+     * 向下滚动，当头部区域可见状态时，优先将头部列表显示出来
+     *
+     * @param target       targetView
+     * @param dyUnconsumed y轴距离 dyUnconsumed < 0
+     * @param type         滑动类型
+     */
+    private void scrollDownWhenTopExpand(View target, int dyUnconsumed, @ViewCompat.NestedScrollType int type) {
+        int scrollY = mListParent.getScrollY();
+        if (scrollY > 0) {
+            int offset = Math.max(dyUnconsumed, -scrollY);
+            mListParent.scrollBy(0, offset);
+            if (type == ViewCompat.TYPE_NON_TOUCH && mListParent.getScrollY() == 0) {
+                tryToStopScroll(target);
+            }
+            return;
+        }
+
+        switch (type) {
+            case ViewCompat.TYPE_TOUCH:         // 触摸滑动
+                if (mStatus != STATUS_DEFAULT && mStatus != STATUS_PULL) { // 在不是默认状态 或 下拉状态时，直接跳过
+                    return;
+                }
+                float oldY = mRefreshLayout.getTranslationY();
+                if (oldY >= mMaxPullHeight) { // 下拉到了最大距离
+                    return;
+                }
+                mStatus = STATUS_PULL;
+                final float offset = Math.min(-0.5f * dyUnconsumed, mMaxPullHeight - oldY); // 下拉阻尼 = 0.5
+                final float translationY = offset + oldY;
+                mListParent.setTranslationY(translationY);
+                mRefreshLayout.setTranslationY(translationY);
+                // 根据偏移量，更新状态
+                if (translationY >= mRefreshHeight) {
+                    mRefreshView.setStatus(IRefreshView.STATUS_PRE_REFRESH);
+                } else {
+                    mRefreshView.setStatus(IRefreshView.STATUS_PULL);
+                }
+                break;
+
+            case ViewCompat.TYPE_NON_TOUCH:     // 惯性滑动
+                tryToStopScroll(target);
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    /**
+     * 向下滚动，当头部区域隐藏状态时，需要撕裂过程过渡到可见状态
+     *
+     * @param target       targetView
+     * @param dyUnconsumed y轴距离 dyUnconsumed < 0
+     * @param type         滑动类型
+     */
+    private void scrollDownWhenTopHide(View target, int dyUnconsumed, @ViewCompat.NestedScrollType int type) {
+        switch (type) {
+            case ViewCompat.TYPE_TOUCH:     // 触摸滑动
+                if (mStatus != STATUS_DEFAULT && mStatus != STATUS_PULL) { // 在不是默认状态 或 下拉状态时，直接跳过
+                    return;
+                }
+                float oldY = mRefreshLayout.getTranslationY();
+                if (oldY >= mMaxPullHeight) { // 下拉到了最大距离
+                    return;
+                }
+                mStatus = STATUS_PULL;
+                final float offset = Math.min(-0.5f * dyUnconsumed, mMaxPullHeight - oldY); // 下拉阻尼 = 0.5
+                final float translationY = offset + oldY;
+                mListParent.setTranslationY(translationY);
+                mRefreshLayout.setTranslationY(translationY);
+                // 根据偏移量，更新状态
+                if (translationY >= mRipHeight) {                           // 撕裂状态
+                    onRipRefreshView();
+                } else if (translationY >= mRefreshHeight) {                // 可刷新状态
+                    mRefreshView.setStatus(IRefreshView.STATUS_PRE_REFRESH);
+                } else {                                                    // 默认状态
+                    mRefreshView.setStatus(IRefreshView.STATUS_PULL);
+                }
+                break;
+
+            case ViewCompat.TYPE_NON_TOUCH:     // 惯性滑动
+                tryToStopScroll(target);
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    /**
+     * 处理撕裂状态
+     */
+    private void onRipRefreshView() {
+        if (mStatus != STATUS_PULL) {
+            return;
+        }
+        mStatus = STATUS_BREAK;
+        mHeadRvClosed = false;
+        mListParent.setTranslationY(0);
+        mListParent.scrollBy(0, -mRipHeight);
+        ValueAnimator animator = ObjectAnimator.ofFloat(mRefreshLayout, "translationY", 0);
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                super.onAnimationEnd(animation);
+                mStatus = STATUS_DEFAULT;
+            }
+        });
+        animator.start();
+    }
+
+    /**
+     * 尝试停止滚动
+     *
+     * @param target targetView
+     */
+    private void tryToStopScroll(View target) {
+        if (target instanceof RecyclerView) {
+            ((RecyclerView) target).stopScroll();
         }
     }
 
     @Override
     public void onNestedPreScroll(@NonNull View target, int dx, int dy, @NonNull int[] consumed, @ViewCompat.NestedScrollType int type) {
-        if (dy > 0) {
-            int headHeight = mHeadView.getHeight();
-            if (headHeight > mMinHeadHeight) { // 缩小headView
-                ViewGroup.LayoutParams layoutParams = mHeadView.getLayoutParams();
-                int offset = Math.min(dy, headHeight - mMinHeadHeight);
-                layoutParams.height = headHeight - offset;
-                mHeadView.setLayoutParams(layoutParams);
-                mHeadView.requestLayout();
-                consumed[1] = offset;
-            } else if (mStatus == STATUS_PULL) {
-                float oldY = mRefreshLayout.getTranslationY();
-                if (oldY > 0) {
-                    float offset = Math.min(dy, oldY);
-                    float translationY = oldY - offset;
-                    mListParent.setTranslationY(translationY);
-                    mRefreshLayout.setTranslationY(translationY);
-                    float newY = mRefreshLayout.getTranslationY();
-                    consumed[1] = (int) (oldY - newY);
-                    if (newY == 0) {
-                        mStatus = STATUS_NULL;
-                    }
-                    if (translationY >= mRefreshHeight) {
-                        mRefreshView.setStatus(IRefreshView.STATUS_PRE_REFRESH);
-                    } else if (translationY > 0) {
-                        mRefreshView.setStatus(IRefreshView.STATUS_PULL);
-                    } else {
-                        mRefreshView.setStatus(IRefreshView.STATUS_NULL);
-                    }
-                } else {
-                    mStatus = STATUS_NULL;
-                }
-            } else if (target == mRecyclerView) {
-                handleScrollUp(dy, consumed, type);
-            }
+        if (dy <= 0) {
+            // 向下滚动的行为，交给子View处理
+            return;
         }
-        Log.d(TAG, "onNestedPreScroll: dy = " + dy);
-        Log.d(TAG, "onNestedPreScroll: consumed = " + Arrays.toString(consumed));
+        // 处理向上滚动
+        int headHeight = mHeadView.getHeight();
+        if (headHeight > mMinHeadHeight) {      // 优先缩小置顶View
+            int offset = Math.min(dy, headHeight - mMinHeadHeight);
+            ViewGroup.LayoutParams layoutParams = mHeadView.getLayoutParams();
+            layoutParams.height = headHeight - offset;
+            mHeadView.setLayoutParams(layoutParams);
+            consumed[1] = offset;
+        } else if (mStatus == STATUS_PULL) {    // 当前正在下拉刷新状态
+            float oldY = mRefreshLayout.getTranslationY();
+            if (oldY <= 0) {
+                mStatus = STATUS_DEFAULT;
+                return;
+            }
+            float offset = Math.min(dy, oldY);
+            float translationY = oldY - offset;
+            mListParent.setTranslationY(translationY);
+            mRefreshLayout.setTranslationY(translationY);
+            consumed[1] = (int) offset;
+            // 根据偏移量，更新状态
+            if (translationY >= mRefreshHeight) {
+                mRefreshView.setStatus(IRefreshView.STATUS_PRE_REFRESH);
+            } else if (translationY > 0) {
+                mRefreshView.setStatus(IRefreshView.STATUS_PULL);
+            } else {
+                mRefreshView.setStatus(IRefreshView.STATUS_NULL);
+                mStatus = STATUS_DEFAULT;
+            }
+        } else if (target == mRecyclerView) {
+            hideTopRecyclerView(dy, consumed);
+        }
     }
 
-    private void handleScrollUp(int dy, int[] consumed, int type) {
+    private void hideTopRecyclerView(int dy, int[] consumed) {
         int oldY = mListParent.getScrollY();
         int height = mHeadRv.getHeight();
         if (oldY < height) {
@@ -394,7 +414,7 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
             @Override
             public void onAnimationEnd(Animator animation) {
                 super.onAnimationEnd(animation);
-                mStatus = STATUS_NULL;
+                mStatus = STATUS_DEFAULT;
                 mRefreshView.setStatus(IRefreshView.STATUS_NULL);
             }
         });
@@ -407,7 +427,7 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
 
 
     public void startRefresh() {
-        if (mStatus == STATUS_NULL) {
+        if (mStatus == STATUS_DEFAULT) {
             onRefreshing();
         }
     }
@@ -423,14 +443,35 @@ public class MyScrollLayout extends FrameLayout implements NestedScrollingParent
     }
 
     public void resetAllView() {
-        if (mStatus == STATUS_NULL) {
-            onResetRefresh();
-
-
-            mListParent.setScrollY(0);
-
-
+        if (mStatus != STATUS_DEFAULT) {
+            return;
         }
+        int height = mHeadView.getHeight();
+        if (height == mMaxHeadHeight) { // 当前已处于初始状态
+            return;
+        }
+        tryToStopScroll(mRecyclerView);
+        tryToStopScroll(mHeadRv);
+        mRecyclerView.scrollToPosition(0);
+        mRecyclerView.scrollToPosition(0);
+        mListParent.setScrollY(0);
+        final ViewGroup.LayoutParams layoutParams = mHeadView.getLayoutParams();
+        ValueAnimator animator = ValueAnimator.ofInt(height, mMaxHeadHeight);
+        animator.setInterpolator(new LinearInterpolator());
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                layoutParams.height = (int) animation.getAnimatedValue();
+                mHeadView.setLayoutParams(layoutParams);
+            }
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                mStatus = STATUS_DEFAULT;
+            }
+        });
+        animator.start();
     }
 
 
